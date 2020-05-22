@@ -17,7 +17,7 @@ torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--action', default='train')
-parser.add_argument('--dataset', default="gtea")
+parser.add_argument('--dataset', default="breakfast")
 parser.add_argument('--split', default='1')
 
 args = parser.parse_args()
@@ -37,12 +37,12 @@ sample_rate = 1
 if args.dataset == "50salads":
     sample_rate = 2
 
-vid_list_file = "./data/"+args.dataset+"/splits/train.split"+args.split+".bundle"
-vid_list_file_tst = "./data/"+args.dataset+"/splits/test.split"+args.split+".bundle"
-features_path = "./data/"+args.dataset+"/features/"
-gt_path = "./data/"+args.dataset+"/groundTruth/"
+vid_list_file = "/media/data/salam/data/"+args.dataset+"/splits/train.split"+args.split+".bundle"
+vid_list_file_tst = "/media/data/salam/data/"+args.dataset+"/splits/test.split"+args.split+".bundle"
+features_path = "/media/data/salam/data/"+args.dataset+"/features/"
+gt_path = "/media/data/salam/data/"+args.dataset+"/groundTruth/"
 
-mapping_file = "./data/"+args.dataset+"/mapping.txt"
+mapping_file = "/media/data/salam/data/"+args.dataset+"/mapping.txt"
 
 model_dir = "./models/"+args.dataset+"/split_"+args.split
 results_dir = "./results/"+args.dataset+"/split_"+args.split
