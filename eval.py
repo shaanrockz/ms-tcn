@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+
 # adapted from: https://github.com/colincsl/TemporalConvolutionalNetworks/blob/master/code/metrics.py
 
 import numpy as np
@@ -93,8 +93,8 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default="gtea")
-    parser.add_argument('--split', default='1')
+    parser.add_argument('--dataset', default="breakfast")
+    parser.add_argument('--split', default='4')
 
     args = parser.parse_args()
 

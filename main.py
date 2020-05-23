@@ -1,4 +1,3 @@
-#!/usr/bin/python2.7
 
 import torch
 from model import Trainer
@@ -9,16 +8,16 @@ import random
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-seed = 1538574472
+seed = 786
 random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--action', default='train')
+parser.add_argument('--action', default='predict')
 parser.add_argument('--dataset', default="breakfast")
-parser.add_argument('--split', default='1')
+parser.add_argument('--split', default='4')
 
 args = parser.parse_args()
 
@@ -26,7 +25,7 @@ num_stages = 4
 num_layers = 10
 num_f_maps = 64
 features_dim = 2048
-bz = 1
+bz = 16
 lr = 0.0005
 num_epochs = 50
 
