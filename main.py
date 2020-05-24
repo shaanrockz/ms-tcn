@@ -1,7 +1,9 @@
 
 import torch
 from model import Trainer
-from batch_gen import BatchGenerator
+# from batch_gen import BatchGenerator
+from TCNDataset import TCNDataset
+from torch.utils.data import DataLoader
 import os
 import argparse
 import random
@@ -62,9 +64,11 @@ num_classes = len(actions_dict)
 
 trainer = Trainer(num_stages, num_layers, num_f_maps, features_dim, num_classes)
 if args.action == "train":
-    batch_gen = BatchGenerator(num_classes, actions_dict, gt_path, features_path, sample_rate)
-    batch_gen.read_data(vid_list_file)
-    trainer.train(model_dir, batch_gen, num_epochs=num_epochs, batch_size=bz, learning_rate=lr, device=device)
+    # batch_gen = BatchGenerator(num_classes, actions_dict, gt_path, features_path, sample_rate)
+    # batch_gen.read_data(vid_list_file)
+    tcn_dataset = TCNDataset(num_classes, actions_dict, gt_path, features_path, sample_rate, vid_list_file)
+    tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=8, pin_memory=True)
+    trainer.train(model_dir, tcn_dataloader, num_epochs=num_epochs, learning_rate=lr, device=device)
 
 if args.action == "predict":
     trainer.predict(model_dir, results_dir, features_path, vid_list_file_tst, num_epochs, actions_dict, device, sample_rate)
