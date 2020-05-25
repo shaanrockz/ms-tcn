@@ -1,9 +1,8 @@
-
-
 import torch
 import numpy as np
 import random
 
+from torch.utils.data import Sampler 
 
 class BatchGenerator(object):
     def __init__(self, num_classes, actions_dict, gt_path, features_path, sample_rate):
@@ -56,3 +55,15 @@ class BatchGenerator(object):
             mask[i, :, :np.shape(batch_target[i])[0]] = torch.ones(self.num_classes, np.shape(batch_target[i])[0])
 
         return batch_input_tensor, batch_target_tensor, mask
+
+
+
+class BatchSampler(Sampler):
+    def __init__(self, data):
+        self.num_samples = len(data)
+
+    def __iter__(self):
+        return iter(range(self.num_samples))
+
+    def __len__(self):
+        return self.num_samples

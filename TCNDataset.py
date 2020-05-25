@@ -32,19 +32,21 @@ class TCNDataset(Dataset):
         batch_input = features[:, ::self.sample_rate]
         batch_target = classes[::self.sample_rate]
 
-        length_of_sequences = list(map(len, batch_target))
-        batch_input_tensor = torch.zeros(np.shape(batch_input[0])[0], max(length_of_sequences), dtype=torch.float)
-        batch_target_tensor = torch.ones(max(length_of_sequences), dtype=torch.long)*(-100)
-        mask = torch.zeros(self.num_classes, max(length_of_sequences), dtype=torch.float)
+        length_of_sequences = len(batch_target)
+        #length_of_sequences = 10000
+        batch_input_tensor = torch.zeros(np.shape(batch_input)[0], length_of_sequences, dtype=torch.float)
+        batch_target_tensor = torch.ones(length_of_sequences, dtype=torch.float)*(-100)
+        mask = torch.zeros(self.num_classes, length_of_sequences, dtype=torch.float)
+        #print(np.shape(batch_input_tensor))
+        #print(np.shape(batch_input))
         
         batch_input_tensor[:, :np.shape(batch_input)[1]] = torch.from_numpy(batch_input)
         batch_target_tensor[:np.shape(batch_target)[0]] = torch.from_numpy(batch_target)
-        mask[:, :np.shape(batch_target[i])[0]] = torch.ones(self.num_classes, np.shape(batch_target)[0])
+        mask[:, :np.shape(batch_target)[0]] = torch.ones(self.num_classes, np.shape(batch_target)[0])
 
-        return {
-                "input": batch_input_tensor,
-                "target": torch.Tensor(
-                    batch_target_tensor).type(torch.LongTensor),
-                "mask": torch.Tensor(
-                    mask),
-            }
+        return batch_input_tensor, batch_target_tensor, mask
+        """ return {
+               "input": batch_input_tensor,
+               "target": batch_target_tensor.type(torch.LongTensor),
+               "mask": mask,
+           } """

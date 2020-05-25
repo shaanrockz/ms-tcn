@@ -1,13 +1,42 @@
 
 import torch
 from model import Trainer
-# from batch_gen import BatchGenerator
+#from batch_gen import BatchGenerator
 from TCNDataset import TCNDataset
 from torch.utils.data import DataLoader
 import os
 import argparse
 import random
 
+
+def collate_fn_padd(batch):
+    '''
+    Padds batch of variable length
+    '''
+
+    max_size = batch[0][0].size()
+    trailing_dims = max_size[:1]
+    max_len = max([s[0].size(1) for s in batch])
+    out_dims = (int(len(batch)), int(trailing_dims[0]), int(max_len))
+
+    out_dims_target = (int(len(batch)), int(max_len))
+    
+    out_dims_mask = (int(len(batch)), batch[0][2].size()[0], int(max_len))
+
+    out_tensor = batch[0][0].data.new(*out_dims).fill_(0)
+    out_target = batch[0][1].data.new(*out_dims_target).fill_(1)
+    out_mask = batch[0][2].data.new(*out_dims_mask).fill_(0)
+
+    for i, tensor in enumerate(batch):
+        out_tensor[i, :, :tensor[0].size(1)] = tensor[0]
+        out_target[i, :tensor[1].size(0)] = tensor[1]
+        out_mask[i, :, :tensor[2].size(1)] = tensor[2]
+
+    return {
+                "input": out_tensor,
+                "target": out_target.type(torch.LongTensor),
+                "mask": out_mask,
+            }
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 786
@@ -62,12 +91,13 @@ for a in actions:
 
 num_classes = len(actions_dict)
 
-trainer = Trainer(num_stages, num_layers, num_f_maps, features_dim, num_classes)
+trainer = Trainer(num_stages, num_layers, num_f_maps, features_dim, num_classes, bz)
 if args.action == "train":
-    # batch_gen = BatchGenerator(num_classes, actions_dict, gt_path, features_path, sample_rate)
-    # batch_gen.read_data(vid_list_file)
+    # tcn_dataloader = BatchGenerator(num_classes, actions_dict, gt_path, features_path, sample_rate)
+    # tcn_dataloader.read_data(vid_list_file)
     tcn_dataset = TCNDataset(num_classes, actions_dict, gt_path, features_path, sample_rate, vid_list_file)
-    tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=8, pin_memory=True)
+    tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=0, pin_memory=True, collate_fn=collate_fn_padd)
+    #tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=0, pin_memory=True)
     trainer.train(model_dir, tcn_dataloader, num_epochs=num_epochs, learning_rate=lr, device=device)
 
 if args.action == "predict":
