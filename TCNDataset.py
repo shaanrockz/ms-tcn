@@ -4,7 +4,7 @@ import random
 from torch.utils.data import Dataset
 
 class TCNDataset(Dataset):
-    def __init__(self, num_classes, actions_dict, gt_path, features_path, sample_rate, vid_list_file):
+    def __init__(self, args, num_classes, actions_dict, gt_path, features_path, sample_rate, vid_list_file):
         self.list_of_examples = list()
         self.index = 0
         self.num_classes = num_classes
@@ -16,6 +16,7 @@ class TCNDataset(Dataset):
         self.list_of_examples = file_ptr.read().split('\n')[:-1]
         file_ptr.close()
         random.shuffle(self.list_of_examples)
+        self.args= args
 
     def __len__(self):
         return len(self.list_of_examples)
@@ -24,6 +25,8 @@ class TCNDataset(Dataset):
         sample = self.list_of_examples[idx]
 
         features = np.load(self.features_path + sample.split('.')[0] + '.npy')
+        if self.args.dataset == "cross_task":
+            features = features.T
         file_ptr = open(self.gt_path + sample, 'r')
         content = file_ptr.read().split('\n')[:-1]
         classes = np.zeros(min(np.shape(features)[1], len(content)))
