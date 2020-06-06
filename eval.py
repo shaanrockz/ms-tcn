@@ -95,6 +95,9 @@ def main():
 
     parser.add_argument('--dataset', default="cross_task")
     parser.add_argument('--split', default='1')
+    with_bg = True
+
+    bg_class = ["SIL"]
 
     args = parser.parse_args()
 
@@ -117,16 +120,29 @@ def main():
         
         recog_file = recog_path + vid.split('.')[0]
         recog_content = read_file(recog_file).split('\n')[1:]
+        # recog_content = read_file(recog_file).split('\n')[1].split()
 
         for i in range(len(gt_content)):
-            total += 1
-            if gt_content[i] == recog_content[i]:
-                correct += 1
+            if not with_bg:
+                if gt_content[i] not in bg_class:
+                    total += 1
+                    if gt_content[i] == recog_content[i]:
+                        correct += 1
+            else:
+                total += 1
+                if gt_content[i] == recog_content[i]:
+                    correct += 1
         
-        edit += edit_score(recog_content, gt_content)
+        if not with_bg:
+            edit += edit_score(recog_content, gt_content, bg_class=bg_class)
+        else:
+            edit += edit_score(recog_content, gt_content)
 
         for s in range(len(overlap)):
-            tp1, fp1, fn1 = f_score(recog_content, gt_content, overlap[s])
+            if not with_bg:
+                tp1, fp1, fn1 = f_score(recog_content, gt_content, overlap[s], bg_class=bg_class)
+            else:
+                tp1, fp1, fn1 = f_score(recog_content, gt_content, overlap[s])
             tp[s] += tp1
             fp[s] += fp1
             fn[s] += fn1
