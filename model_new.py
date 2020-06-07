@@ -31,9 +31,8 @@ class SingleStageModel(nn.Module):
         self.conv_1x1 = nn.Conv1d(dim, num_f_maps, 1)
         self.layers = nn.ModuleList([copy.deepcopy(DilatedResidualLayer(
             2 ** i, num_f_maps, num_f_maps)) for i in range(num_layers)])
-        self.conv_out = nn.Conv1d(num_f_maps, num_classes - 1, 1)
+        self.conv_out = nn.Conv1d(num_f_maps, num_classes, 1)
         self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
-        self.sigmd = nn.Sigmoid()
 
     def forward(self, x, mask):
         out = self.conv_1x1(x)
@@ -41,7 +40,7 @@ class SingleStageModel(nn.Module):
             out = layer(out, mask)
         out1 = self.conv_out(out) * mask[:, 0:1, :]
         out2 = self.conv_bg(out) * mask[:, 0:1, :]
-        return {"out_bg": self.sigmd(out2),
+        return {"out_bg": out2,
                 "out_class": out1}
 
 
@@ -66,7 +65,7 @@ class Trainer:
         #     num_blocks, num_layers, num_f_maps, dim, num_classes)
         self.model = SingleStageModel(num_layers, num_f_maps, dim, num_classes)
         self.ce_class = nn.CrossEntropyLoss(ignore_index=0)
-        self.ce_bg = nn.BCELoss()
+        self.ce_bg = nn.BCEWithLogitsLoss()
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
@@ -83,14 +82,13 @@ class Trainer:
             count = 0
 
             for idx, sample_batch in enumerate(data_train):
-                # batch_input = sample_batch['input']
-                # batch_target = sample_batch["target"]
-                # mask = sample_batch["mask"]
+                batch_input = sample_batch['input']
+                batch_target = sample_batch["target"]
+                mask = sample_batch["mask"]
 
-                batch_input = sample_batch[0]
-                # print(len(batch_input))
-                batch_target = torch.randint(199, (32,100))
-                mask = torch.ones(32,1,100)
+                #batch_input = sample_batch[0]
+                #batch_target = torch.randint(199, (32,100))
+                #mask = torch.ones(32,1,100)
 
                 count += 1
                 batch_input = batch_input.to(device) 
@@ -103,27 +101,33 @@ class Trainer:
                 loss = 0
                 # for p in predictions:
                 loss += self.ce_class(p.transpose(2, 1).contiguous().view(-1,
-                                                                    self.num_classes-1), batch_target.view(-1))
+                                                                    self.num_classes), batch_target.view(-1))
+                # print(p.size())
+                # print(mask.size())
                 loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(p[:, :, 1:], dim=1), F.log_softmax(
                     p.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
 
-                loss += self.ce_bg(p_bg.transpose(2, 1).contiguous().view(-1, 1), (~(batch_target.view(-1)>0)).float())
+                loss += self.ce_bg(p_bg.transpose(2, 1).contiguous().view(-1, 1), (~(batch_target.view(-1,1)>0)).float())
 
                 epoch_loss += loss.item()
                 loss.backward()
                 optimizer.step()
                 
-                predictions = torch.cat((p_bg, p), 1)
+                #predictions = torch.cat((p_bg, p), 1)
+                #print(p.size())
+                #print(p_bg.size())
+                predictions = p
+                predictions[:, 0, :] = 1-p_bg[:, 0, :]
                 _, predicted = torch.max(predictions.data, 1)
                 correct += ((predicted == batch_target).float() *
                             mask[:, 0, :].squeeze(1)).sum().item()
                 total += torch.sum(mask[:, 0, :]).item()
 
             # data_train.reset()
-            # torch.save(self.model.state_dict(), save_dir +
-            #            "/epoch-" + str(epoch + 1) + ".model")
-            # torch.save(optimizer.state_dict(), save_dir +
-            #            "/epoch-" + str(epoch + 1) + ".opt")
+            torch.save(self.model.state_dict(), save_dir +
+                       "/epoch-" + str(epoch + 1) + ".model")
+            torch.save(optimizer.state_dict(), save_dir +
+                       "/epoch-" + str(epoch + 1) + ".opt")
             print("[epoch %d]: epoch loss = %f,   acc = %f" % (epoch + 1, epoch_loss / (count*self.batch_size),
                                                                float(correct)/total))
 
@@ -147,7 +151,15 @@ class Trainer:
                 input_x = input_x.to(device)
                 predictions = self.model(
                     input_x, torch.ones(input_x.size(), device=device))
-                _, predicted = torch.max(predictions[-1].data, 1)
+
+                p = predictions["out_class"]
+                p_bg = predictions["out_bg"]
+
+                predictions = p
+                predictions[:,0,:] = p_bg[:,0,:]
+                _, predicted = torch.max(predictions.data, 1)
+
+                #_, predicted = torch.max(predictions[-1].data, 1)
                 predicted = predicted.squeeze()
                 recognition = []
                 for i in range(len(predicted)):

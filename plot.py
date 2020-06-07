@@ -11,7 +11,7 @@ def read_file(path):
     return content
 
 def main():
-    dataset = "cross_task"
+    dataset = "breakfast"
     split = "1"
 
     color_names = [name for name in mcd.CSS4_COLORS]
@@ -19,7 +19,6 @@ def main():
     random.seed(786)
     random.shuffle(color_names)
     color_names.insert(0, 'black')
-    print(color_names)
 
     gt_path = "/media/data/salam/data/"+dataset+"/groundTruth/"
     pred_path = "./results/"+dataset+"/split_"+split+"/"
@@ -34,7 +33,7 @@ def main():
             break
         ann[m[1]] = int(m[0])
 
-    list_of_videos = read_file(file_list).split('\n')[145:-1]
+    list_of_videos = read_file(file_list).split('\n')[51:-1]
 
     for vid in list_of_videos:
         fig = plt.figure()

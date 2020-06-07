@@ -47,18 +47,26 @@ torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--action', default='predict')
-parser.add_argument('--dataset', default="breakfast")
-parser.add_argument('--split', default='4')
+parser.add_argument('--action', default='train')
+parser.add_argument('--dataset', default="cross_task")
+parser.add_argument('--split', default='1')
 
 args = parser.parse_args()
 
 num_stages = 4
 num_layers = 10
 num_f_maps = 64
-# features_dim = 2048
-features_dim = 3200
-bz = 16
+
+if not args.dataset == "cross_task":
+    features_dim = 2048
+    bz = 16
+    num_worker = 4
+else:
+    features_dim = 3200
+    bz = 64
+    num_worker = 8
+
+#bz = 16
 lr = 0.0005
 num_epochs = 50
 
@@ -103,7 +111,7 @@ if args.action == "train":
     tcn_dataset = TCNDataset(args, num_classes, actions_dict,
                              gt_path, features_path, sample_rate, vid_list_file)
     tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True,
-                                num_workers=0, pin_memory=True, collate_fn=collate_fn_padd)
+                                num_workers=num_worker, pin_memory=True, collate_fn=collate_fn_padd)
     #tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=0, pin_memory=True)
     trainer.train(model_dir, tcn_dataloader, num_epochs=num_epochs,
                   learning_rate=lr, device=device)

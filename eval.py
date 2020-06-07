@@ -93,9 +93,9 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default="cross_task")
+    parser.add_argument('--dataset', default="breakfast")
     parser.add_argument('--split', default='1')
-    with_bg = True
+    with_bg = False
 
     bg_class = ["SIL"]
 
