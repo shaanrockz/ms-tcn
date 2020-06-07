@@ -1,6 +1,6 @@
 
 import torch
-from model import Trainer
+from model_new import Trainer
 #from batch_gen import BatchGenerator
 from TCNDataset import TCNDataset
 from torch.utils.data import DataLoader
@@ -56,8 +56,8 @@ args = parser.parse_args()
 num_stages = 4
 num_layers = 10
 num_f_maps = 64
-features_dim = 2048
-#features_dim = 3200
+# features_dim = 2048
+features_dim = 3200
 bz = 16
 lr = 0.0005
 num_epochs = 50
