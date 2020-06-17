@@ -51,7 +51,7 @@ args = parser.parse_args()
 
 
 if args.algo_type == "baas_baseline":
-    from model_current import Trainer
+    from model_baas_baseline import Trainer
 elif args.algo_type == "multi_task":
     from model import Trainer
 elif args.algo_type == "single_task":
