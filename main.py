@@ -1,6 +1,6 @@
 
 import torch
-from model_new import Trainer
+
 #from batch_gen import BatchGenerator
 from TCNDataset import TCNDataset
 from torch.utils.data import DataLoader
@@ -40,31 +40,46 @@ def collate_fn_padd(batch):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-seed = 786
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--action', default='train')
+parser.add_argument('--dataset', default="breakfast")
+parser.add_argument('--split', default='1')
+parser.add_argument('--seed', default=786)
+parser.add_argument('--algo_type', default="baas_baseline")
+args = parser.parse_args()
+
+
+if args.algo_type == "baas_baseline":
+    from model_current import Trainer
+elif args.algo_type == "multi_task":
+    from model import Trainer
+elif args.algo_type == "single_task":
+    from model_single_stage import Trainer
+
+
+seed = int(args.seed)
 random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--action', default='train')
-parser.add_argument('--dataset', default="cross_task")
-parser.add_argument('--split', default='1')
-
-args = parser.parse_args()
-
 num_stages = 4
 num_layers = 10
 num_f_maps = 64
 
-if not args.dataset == "cross_task":
+if args.dataset == "cross_task":
+    features_dim = 3200
+    bz = 16
+    num_worker = 8
+elif args.dataset == "coin":
+    features_dim = 512
+    bz = 16
+    num_worker = 8
+else:
     features_dim = 2048
     bz = 16
-    num_worker = 4
-else:
-    features_dim = 3200
-    bz = 64
-    num_worker = 8
+    num_worker = 0
 
 #bz = 16
 lr = 0.0005
@@ -86,13 +101,6 @@ gt_path = "/media/data/salam/data/"+args.dataset+"/groundTruth/"
 
 mapping_file = "/media/data/salam/data/"+args.dataset+"/mapping.txt"
 
-model_dir = "./models/"+args.dataset+"/split_"+args.split
-results_dir = "./results/"+args.dataset+"/split_"+args.split
-
-if not os.path.exists(model_dir):
-    os.makedirs(model_dir)
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
 
 file_ptr = open(mapping_file, 'r')
 actions = file_ptr.read().split('\n')[:-1]
@@ -105,17 +113,36 @@ num_classes = len(actions_dict)
 
 trainer = Trainer(num_stages, num_layers, num_f_maps,
                   features_dim, num_classes, bz)
+
+model_dir = "./models/"+args.dataset+"_"+trainer.type+"_"+str(seed)+"/split_"+args.split
+if not os.path.exists(model_dir):
+    os.makedirs(model_dir)
+
+results_dir = "./results/"+args.dataset+"_"+trainer.type+"_"+str(seed)+"/split_"+args.split
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir) 
+
 if args.action == "train":
-    # tcn_dataloader = BatchGenerator(num_classes, actions_dict, gt_path, features_path, sample_rate)
-    # tcn_dataloader.read_data(vid_list_file)
     tcn_dataset = TCNDataset(args, num_classes, actions_dict,
                              gt_path, features_path, sample_rate, vid_list_file)
     tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True,
                                 num_workers=num_worker, pin_memory=True, collate_fn=collate_fn_padd)
-    #tcn_dataloader = DataLoader(tcn_dataset, batch_size=bz, shuffle=True, num_workers=0, pin_memory=True)
+    
     trainer.train(model_dir, tcn_dataloader, num_epochs=num_epochs,
                   learning_rate=lr, device=device)
 
 if args.action == "predict":
-    trainer.predict(args, model_dir, results_dir, features_path,
-                    vid_list_file_tst, num_epochs, actions_dict, device, sample_rate)
+    trainer.predict(args, model_dir, results_dir, features_path, vid_list_file_tst, num_epochs, actions_dict, device, sample_rate)
+
+# For Threshold Analysis
+# if args.action == "predict":
+#     for i in range(5):   
+#         for thres in range(1, 10):
+#             results_dir = "./results/"+args.dataset+"_baas_"+str(i+1)+"/thres_"+str(thres/10)
+#             if not os.path.exists(results_dir):
+#                 os.makedirs(results_dir) 
+#             model_dir = "./models/"+args.dataset+"_baas_"+str(i+1)+"/split_"+args.split
+#             if not os.path.exists(model_dir):
+#                 os.makedirs(model_dir)
+#             trainer.predict(args, model_dir, results_dir, features_path,
+#                             vid_list_file_tst, num_epochs, actions_dict, device, sample_rate, thres/10)

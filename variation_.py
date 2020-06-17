@@ -93,102 +93,47 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default="breeakfast")
+    parser.add_argument('--dataset', default="cross_task")
     parser.add_argument('--split', default='1')
-    parser.add_argument('--seed', default=1)
-    parser.add_argument('--algo_type', default="baas_baseline")
+    with_bg = False
+
+    bg_class = ["SIL"]
 
     args = parser.parse_args()
 
-    if args.dataset == "coin":
-        bg_class = ["BG"]
-    elif args.dataset == "gtea":
-        bg_class = ["BG"]
-    elif args.dataset == "50salads":
-        bg_class = ["action_start", "action_end"]
-    else:
-        bg_class = ["SIL"]
-
-    seed = int(args.seed)
     ground_truth_path = "/media/data/salam/data/"+args.dataset+"/groundTruth/"
-    recog_path = "./results/"+args.dataset+"_"+args.algo_type+"_"+str(seed)+"/split_"+args.split+"/"
+    
     file_list = "/media/data/salam/data/"+args.dataset+"/splits/test.split"+args.split+".bundle"
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
-    overlap = [.1, .25, .5]
+    arr = np.zeros((5,9))
+    for k in range(5):
+        for j in range(1,10):
+            recog_path = "./results/"+args.dataset+"_baas_"+str(k+1)+"/thres_"+str(j/10)+"/"
+            correct = 0
+            total = 0
 
-    tp, fp, fn = np.zeros(3), np.zeros(3), np.zeros(3)
-    tp_bg, fp_bg, fn_bg = np.zeros(3), np.zeros(3), np.zeros(3)
+            for vid in list_of_videos:
+                gt_file = ground_truth_path + vid
+                gt_content = read_file(gt_file).split('\n')[0:-1]
+                
+                recog_file = recog_path + vid.split('.')[0]
+                recog_content = read_file(recog_file).split('\n')[1:]
 
-    correct = 0
-    total = 0
-    edit = 0
-    correct_bg = 0
-    total_bg = 0
-    edit_bg = 0
-
-    for vid in list_of_videos:
-        vid = vid.split('/')[-1]
-        gt_file = ground_truth_path + vid
-        gt_content = read_file(gt_file).split('\n')[0:-1]
-        
-        recog_file = recog_path + vid.split('.')[0]
-        recog_content = read_file(recog_file).split('\n')[1:]
-        # recog_content = read_file(recog_file).split('\n')[1].split()
-
-        for i in range(len(gt_content)):
-            if gt_content[i] not in bg_class:
-                total_bg += 1
-                if gt_content[i] == recog_content[i]:
-                    correct_bg += 1
-            
-            total += 1
-            if gt_content[i] == recog_content[i]:
-                correct += 1
-        
-        
-        edit_bg += edit_score(recog_content, gt_content, bg_class=bg_class)
-        
-        edit += edit_score(recog_content, gt_content)
-
-        for s in range(len(overlap)):
-
-            tp1_bg, fp1_bg, fn1_bg = f_score(recog_content, gt_content, overlap[s], bg_class=bg_class)
-
-            tp1, fp1, fn1 = f_score(recog_content, gt_content, overlap[s])
-            
-            tp_bg[s] += tp1_bg
-            fp_bg[s] += fp1_bg
-            fn_bg[s] += fn1_bg
-
-            tp[s] += tp1
-            fp[s] += fp1
-            fn[s] += fn1
-    
-    print("MoF\n")
-    print ("Acc: "+ str(100*float(correct)/total))
-    print ('Edit: '+ str((1.0*edit)/len(list_of_videos)))
-    for s in range(len(overlap)):
-        precision = tp[s] / float(tp[s]+fp[s])
-        recall = tp[s] / float(tp[s]+fn[s])
-    
-        f1 = 2.0 * (precision*recall) / (precision+recall)
-
-        f1 = np.nan_to_num(f1)*100
-        print ('F1 '+ str(overlap[s]) +" : "+ str(f1))
-    
-    print("\nMoF-background\n")
-    print ("Acc: "+ str(100*float(correct_bg)/total_bg))
-    print ('Edit: '+ str((1.0*edit_bg)/len(list_of_videos)))
-    for s in range(len(overlap)):
-        precision = tp_bg[s] / float(tp_bg[s]+fp_bg[s])
-        recall = tp_bg[s] / float(tp_bg[s]+fn_bg[s])
-    
-        f1 = 2.0 * (precision*recall) / (precision+recall)
-
-        f1 = np.nan_to_num(f1)*100
-        print ('F1 '+ str(overlap[s]) +" : "+ str(f1))
+                for i in range(len(gt_content)):
+                    if not with_bg:
+                        if gt_content[i] not in bg_class:
+                            total += 1
+                            if gt_content[i] == recog_content[i]:
+                                correct += 1
+                    else:
+                        total += 1
+                        if gt_content[i] == recog_content[i]:
+                            correct += 1
+            arr[k,j-1] = 100*float(correct)/total
+            #print ("Acc: "+ str(100*float(correct)/total))
+    np.save('result_without_bg', arr)
 
 
 if __name__ == '__main__':

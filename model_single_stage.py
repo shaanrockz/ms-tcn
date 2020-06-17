@@ -1,5 +1,3 @@
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,16 +30,16 @@ class SingleStageModel(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(DilatedResidualLayer(
             2 ** i, num_f_maps, num_f_maps)) for i in range(num_layers)])
         self.conv_out = nn.Conv1d(num_f_maps, num_classes, 1)
-        self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
+        # self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
 
     def forward(self, x, mask):
         out = self.conv_1x1(x)
         for layer in self.layers:
             out = layer(out, mask)
         out1 = self.conv_out(out) * mask[:, 0:1, :]
-        out2 = self.conv_bg(out) * mask[:, 0:1, :]
-        return {"out_bg": out2,
-                "out_class": out1}
+        return out1
+        # return {"out_bg": out1,
+        #         "out_class": out1}
 
 
 class DilatedResidualLayer(nn.Module):
@@ -64,11 +62,12 @@ class Trainer:
         # self.model = MultiStageModel(
         #     num_blocks, num_layers, num_f_maps, dim, num_classes)
         self.model = SingleStageModel(num_layers, num_f_maps, dim, num_classes)
-        self.ce_class = nn.CrossEntropyLoss(ignore_index=0)
-        self.ce_bg = nn.BCEWithLogitsLoss()
+        #self.ce_class = nn.CrossEntropyLoss(ignore_index=0)
+        self.ce = nn.CrossEntropyLoss(ignore_index=-100)
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
+        self.type = "single_task"
 
     def train(self, save_dir, data_train, num_epochs, learning_rate, device):
         self.model.train()
@@ -86,6 +85,8 @@ class Trainer:
                 batch_target = sample_batch["target"]
                 mask = sample_batch["mask"]
 
+                # if idx == 3:
+                #     break
                 #batch_input = sample_batch[0]
                 #batch_target = torch.randint(199, (32,100))
                 #mask = torch.ones(32,1,100)
@@ -94,20 +95,20 @@ class Trainer:
                 batch_input = batch_input.to(device) 
                 batch_target, mask = batch_target.to(device), mask.to(device)
                 optimizer.zero_grad()
+
+                # with torch.autograd.profiler.profile(use_cuda=True) as prof:
                 predictions = self.model(batch_input, mask)
-                p = predictions["out_class"]
-                p_bg = predictions["out_bg"]
+                # print(prof)
+                # break
 
                 loss = 0
                 # for p in predictions:
-                loss += self.ce_class(p.transpose(2, 1).contiguous().view(-1,
-                                                                    self.num_classes), batch_target.view(-1))
                 # print(p.size())
                 # print(mask.size())
-                loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(p[:, :, 1:], dim=1), F.log_softmax(
-                    p.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
-
-                loss += self.ce_bg(p_bg.transpose(2, 1).contiguous().view(-1, 1), (~(batch_target.view(-1,1)>0)).float())
+                loss += self.ce(predictions.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
+                
+                loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(predictions[:, :, 1:], dim=1), F.log_softmax(
+                    predictions.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
 
                 epoch_loss += loss.item()
                 loss.backward()
@@ -116,8 +117,8 @@ class Trainer:
                 #predictions = torch.cat((p_bg, p), 1)
                 #print(p.size())
                 #print(p_bg.size())
-                predictions = p
-                predictions[:, 0, :] = 1-p_bg[:, 0, :]
+                # predictions = p
+                #predictions[:, 0, :] = 1-p_bg[:, 0, :]
                 _, predicted = torch.max(predictions.data, 1)
                 correct += ((predicted == batch_target).float() *
                             mask[:, 0, :].squeeze(1)).sum().item()
@@ -128,7 +129,7 @@ class Trainer:
                        "/epoch-" + str(epoch + 1) + ".model")
             torch.save(optimizer.state_dict(), save_dir +
                        "/epoch-" + str(epoch + 1) + ".opt")
-            print("[epoch %d]: epoch loss = %f,   acc = %f" % (epoch + 1, epoch_loss / (count*self.batch_size),
+            print("[epoch %d]: epoch loss = %f,   acc = %f" % (epoch + 1, epoch_loss / (count),
                                                                float(correct)/total))
 
     def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate):
@@ -141,9 +142,9 @@ class Trainer:
             list_of_vids = file_ptr.read().split('\n')[:-1]
             file_ptr.close()
             for vid in list_of_vids:
-                print(vid)
+                vid = vid.split('/')[-1]
                 features = np.load(features_path + vid.split('.')[0] + '.npy')
-                if args.dataset == "cross_task":
+                if args.dataset in ["cross_task", 'coin']:
                     features = features.T
                 features = features[:, ::sample_rate]
                 input_x = torch.tensor(features, dtype=torch.float)
@@ -152,11 +153,12 @@ class Trainer:
                 predictions = self.model(
                     input_x, torch.ones(input_x.size(), device=device))
 
-                p = predictions["out_class"]
-                p_bg = predictions["out_bg"]
+                # p = predictions["out_class"]
+                # p_bg = predictions["out_bg"]
+                # predictions = p
 
-                predictions = p
-                predictions[:,0,:] = p_bg[:,0,:]
+                # predictions[:,0,:] = p_bg[:,0,:]
+
                 _, predicted = torch.max(predictions.data, 1)
 
                 #_, predicted = torch.max(predictions[-1].data, 1)

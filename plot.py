@@ -11,7 +11,9 @@ def read_file(path):
     return content
 
 def main():
-    dataset = "breakfast"
+    dataset_source = "coin"
+    # pred_dataset = "cross_task_baas"
+    pred_dataset = "coin_baas_baseline_1"
     split = "1"
 
     color_names = [name for name in mcd.CSS4_COLORS]
@@ -20,11 +22,11 @@ def main():
     random.shuffle(color_names)
     color_names.insert(0, 'black')
 
-    gt_path = "/media/data/salam/data/"+dataset+"/groundTruth/"
-    pred_path = "./results/"+dataset+"/split_"+split+"/"
-    file_list = "/media/data/salam/data/"+dataset+"/splits/test.split"+split+".bundle"
+    gt_path = "/media/data/salam/data/"+dataset_source+"/groundTruth/"
+    pred_path = "./results/"+pred_dataset+"/split_"+split+"/"
+    file_list = "/media/data/salam/data/"+dataset_source+"/splits/test.split"+split+".bundle"
 
-    mapping_path = "/media/data/salam/data/"+dataset+"/mapping.txt"
+    mapping_path = "/media/data/salam/data/"+dataset_source+"/mapping.txt"
     maps = read_file(mapping_path).split('\n')
     ann = {}
     for mapping in maps:
@@ -33,21 +35,22 @@ def main():
             break
         ann[m[1]] = int(m[0])
 
-    list_of_videos = read_file(file_list).split('\n')[51:-1]
+    list_of_videos = read_file(file_list).split('\n')[22:-1]
 
     for vid in list_of_videos:
+        vid = vid.split('/')[-1]
         fig = plt.figure()
         
         gt_patch = []
         pred_patch = []
 
-        gt_file = gt_path + vid
+        gt_file = gt_path + vid.split('/')[-1]
         gt_content = read_file(gt_file).split('\n')[0:-1]
         for i in range(len(gt_content)):
             curr = ann[gt_content[i]]
             if i>0:
                 if not prev == curr or i == (len(gt_content)-1):
-                    c= mcd.CSS4_COLORS[color_names[prev]]
+                    c= mcd.CSS4_COLORS[color_names[prev%100]]
                     gt_patch.append(matplotlib.patches.Rectangle((start_id/len(gt_content), 0), (i-start_id)/len(gt_content), 1, color = c))
                     start_id = i
                     prev = curr
@@ -64,7 +67,7 @@ def main():
             curr = ann[recog_content[i]]
             if i>0:
                 if not prev == curr or i == (len(recog_content)-1):
-                    c= mcd.CSS4_COLORS[color_names[prev]]
+                    c= mcd.CSS4_COLORS[color_names[prev%100]]
                     pred_patch.append(matplotlib.patches.Rectangle((start_id/len(recog_content), 0), (i-start_id)/len(recog_content), 1, color = c))
                     start_id = i
                     prev = curr

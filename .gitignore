@@ -2,3 +2,6 @@ models/
 results/
 .vscode/
 __pycache__/
+q.log/
+*.q
+*.npy

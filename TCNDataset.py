@@ -22,10 +22,9 @@ class TCNDataset(Dataset):
         return len(self.list_of_examples)
 
     def __getitem__(self, idx):
-        sample = self.list_of_examples[idx]
-
+        sample = self.list_of_examples[idx].split('/')[-1]
         features = np.load(self.features_path + sample.split('.')[0] + '.npy')
-        if self.args.dataset == "cross_task":
+        if self.args.dataset in ["cross_task", "coin"]:
             features = features.T
         file_ptr = open(self.gt_path + sample, 'r')
         content = file_ptr.read().split('\n')[:-1]
