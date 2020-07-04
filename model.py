@@ -60,7 +60,7 @@ class Trainer:
     def __init__(self, num_blocks, num_layers, num_f_maps, dim, num_classes, batch_size):
         self.model = MultiStageModel(
             num_blocks, num_layers, num_f_maps, dim, num_classes)
-        self.ce = nn.CrossEntropyLoss(ignore_index=-100)
+        self.ce = nn.CrossEntropyLoss(ignore_index=-1)
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size

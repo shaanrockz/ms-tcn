@@ -5,6 +5,7 @@ from torch import optim
 import copy
 import numpy as np
 import random
+import torch.distributions as dist
 
 class MultiStageModel(nn.Module):
     def __init__(self, num_stages, num_layers, num_f_maps, dim, num_classes):
@@ -31,6 +32,7 @@ class SingleStageModel(nn.Module):
             2 ** i, num_f_maps, num_f_maps)) for i in range(num_layers)])
         self.conv_out = nn.Conv1d(num_f_maps, num_classes-1, 1)
         self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
+        self.num_classes = num_classes
 
     def forward(self, x, mask):
         out = self.conv_1x1(x)
@@ -38,6 +40,9 @@ class SingleStageModel(nn.Module):
             out = layer(out, mask)
         out1 = self.conv_out(out) * mask[:, 0:1, :]
         out2 = self.conv_bg(out) * mask[:, 0:1, :]
+
+        # noise = torch.rand(out1.shape).cuda()
+        # out1 += noise.mul_(out2.repeat(1, self.num_classes-1, 1))
         return {"out_bg": out2,
                 "out_class": out1}
 
@@ -67,7 +72,7 @@ class Trainer:
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.type = "baas_baseline"
+        self.type = "baas_chaos"
         self.debugging = debugging
         self.seed = seed
 
@@ -84,6 +89,9 @@ class Trainer:
             total_bg = 0
             count = 0
 
+
+            total_fg_entropy = 0
+            total_bg_entropy = 0
             # rand(self.seed)
             for idx, sample_batch in enumerate(data_train):
                 batch_input = sample_batch['input']
@@ -115,8 +123,25 @@ class Trainer:
                 p_cat = torch.cat((pred_bg, pred_fg), 1)
                 loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(p_cat[:, :, 1:], dim=1), F.log_softmax(
                     p_cat.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
+
+                entropy = dist.Categorical(logits=torch.transpose(pred_fg, 1, 2)).entropy()
+                entropy_bg = entropy*(batch_target==0).float()
+                total_bg_entropy += torch.sum(entropy_bg)/(torch.sum((entropy_bg>0).float()) + 0.000001)
                 
-                loss = loss + loss_bg + loss_fg
+                entropy_fg = entropy*(batch_target>0).float()
+                total_fg_entropy += torch.sum(entropy_fg)/(torch.sum((entropy_fg>0).float()) + 0.000001)
+
+                loss_chaos = 0
+                loss_chaos = torch.sum(entropy_bg)/(torch.sum((entropy_bg>0).float()) + 0.000001)
+
+                # alpha = 0.9**(epoch-1)
+                alpha = 0.15
+
+                loss = loss + loss_bg + loss_fg - alpha*torch.min(loss_chaos, torch.tensor([3.]).cuda())
+                # loss = loss + loss_bg + loss_fg
+
+                # print(alpha)
+                # print(loss_chaos.item())
 
                 epoch_loss += loss.item()
                 loss.backward()
@@ -124,7 +149,7 @@ class Trainer:
                 
                 if self.debugging:
                     predictions = torch.sigmoid(p_cat.data)
-                    predictions = relative_prediction(predictions, 0.5)
+                    predictions = logit_prediction(predictions, 0.5)
 
                     _, predicted = torch.max(predictions, 1)
                     correct += ((predicted == batch_target).float() * (batch_target>0).float()
@@ -140,10 +165,11 @@ class Trainer:
                 torch.save(optimizer.state_dict(), save_dir +
                         "/epoch-" + str(epoch + 1) + ".opt")
             print("[epoch %d]: epoch loss = %f" % (epoch, epoch_loss / (count)))
+            print("[epoch %d]: BG entropy (avg) = %f, FG entropy (avg) = %f" % (epoch, total_bg_entropy / (count), total_fg_entropy / (count)))
             if self.debugging:
                 print("[epoch %d]: acc_fg = %f, acc_bg = %f" % (epoch, float(correct)/total, float(correct_bg)/total_bg))
 
-    def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate, thres_logit=0.5):
+    def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate, thres_logit=0.5, thres_entropy=2):
         self.model.eval()
         with torch.no_grad():
             self.model.to(device)
@@ -164,11 +190,22 @@ class Trainer:
                 predictions = self.model(
                     input_x, torch.ones(input_x.size(), device=device))
 
+                pred_fg_logit = predictions["out_class"]
                 pred_fg = torch.sigmoid(predictions["out_class"])
                 pred_bg = torch.sigmoid(predictions["out_bg"])
 
                 predictions = torch.cat((pred_bg, pred_fg), 1).data
-                predictions = relative_prediction(predictions, thres_logit)
+                
+                only_logit_prediction = False
+                is_logit_entropy_prediction = True
+                if only_logit_prediction:
+                    predictions = logit_prediction(predictions, thres_logit)
+                else:
+                    # thres_entropy = 0.5*np.log2(self.num_classes-1)
+                    if not is_logit_entropy_prediction:
+                        predictions = chaos_prediction(pred_fg_logit, predictions, thres_entropy)
+                    else:
+                        predictions = chaos_logit_prediction(pred_fg_logit, predictions, thres_entropy, thres_logit)
 
                 _, predicted = torch.max(predictions.data, 1)
 
@@ -183,10 +220,30 @@ class Trainer:
                 f_ptr.write(''.join(recognition))
                 f_ptr.close()
 
-def relative_prediction(predictions, thres):
+def logit_prediction(predictions, thres_logit):
     for i_batch in range(predictions.size()[0]):
         for i_frame in range(predictions.size()[2]):
-            if predictions[i_batch, 0, i_frame] >= torch.sigmoid(torch.tensor(thres).float()):
+            if predictions[i_batch, 0, i_frame] >= torch.sigmoid(torch.tensor(thres_logit).float()):
+                predictions[i_batch, 1:, i_frame] = 0
+            else:
+                predictions[i_batch, 0, i_frame] = 0
+    return predictions
+
+def chaos_prediction(pred_fg, predictions, thres_entropy):
+    for i_batch in range(pred_fg.size()[0]):
+        for i_frame in range(pred_fg.size()[2]):
+            entropy = dist.Categorical(logits=pred_fg[i_batch, :, i_frame]).entropy()
+            if entropy > torch.tensor(thres_entropy).float():
+                predictions[i_batch, 1:, i_frame] = 0
+            else:
+                predictions[i_batch, 0, i_frame] = 0
+    return predictions
+
+def chaos_logit_prediction(pred_fg, predictions, thres_entropy, thres_logit):
+    for i_batch in range(pred_fg.size()[0]):
+        for i_frame in range(pred_fg.size()[2]):
+            entropy = dist.Categorical(logits=pred_fg[i_batch, :, i_frame]).entropy()
+            if entropy > torch.tensor(thres_entropy).float() and predictions[i_batch, 0, i_frame] >= torch.sigmoid(torch.tensor(thres_logit).float()):
                 predictions[i_batch, 1:, i_frame] = 0
             else:
                 predictions[i_batch, 0, i_frame] = 0

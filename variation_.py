@@ -95,7 +95,8 @@ def main():
 
     parser.add_argument('--dataset', default="cross_task")
     parser.add_argument('--split', default='1')
-    with_bg = False
+    parser.add_argument('--algo_type', default="baas_chaos")
+    parser.add_argument('--resdir', default="Chaos_entropy_thres")
 
     bg_class = ["SIL"]
 
@@ -107,12 +108,20 @@ def main():
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
-    arr = np.zeros((5,9))
+    # arr = np.zeros((5,9))
+    # arr_bg = np.zeros((5,9))
+
+    arr = np.zeros((5,12))
+    arr_bg = np.zeros((5,12))
     for k in range(5):
-        for j in range(1,10):
-            recog_path = "./results/"+args.dataset+"_baas_"+str(k+1)+"/thres_"+str(j/10)+"/"
+        # for j in range(1,10):
+        for j in range(1,13):   
+            #recog_path = "./results/"+args.dataset+"_baas_"+str(k+1)+"/thres_"+str(j/10)+"/"
+            recog_path = "./results/"+args.resdir+"/"+args.dataset+"_"+args.algo_type+"_"+str(k+1)+"/split_"+args.split+"/thres_"+str(j)+"/"
             correct = 0
             total = 0
+            correct_bg = 0
+            total_bg = 0
 
             for vid in list_of_videos:
                 gt_file = ground_truth_path + vid
@@ -122,18 +131,19 @@ def main():
                 recog_content = read_file(recog_file).split('\n')[1:]
 
                 for i in range(len(gt_content)):
-                    if not with_bg:
-                        if gt_content[i] not in bg_class:
-                            total += 1
-                            if gt_content[i] == recog_content[i]:
-                                correct += 1
-                    else:
-                        total += 1
+                    if gt_content[i] not in bg_class:
+                        total_bg += 1
                         if gt_content[i] == recog_content[i]:
-                            correct += 1
+                            correct_bg += 1
+                    total += 1
+                    if gt_content[i] == recog_content[i]:
+                        correct += 1
             arr[k,j-1] = 100*float(correct)/total
+            arr_bg[k,j-1] = 100*float(correct_bg)/total_bg
+
             #print ("Acc: "+ str(100*float(correct)/total))
-    np.save('result_without_bg', arr)
+    np.save('result_mof_'+args.dataset+"_"+args.algo_type, arr)
+    np.save('result_mof-bg_'+args.dataset+"_"+args.algo_type, arr_bg)
 
 
 if __name__ == '__main__':

@@ -90,29 +90,29 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
     return float(tp), float(fp), float(fn)
 
 
-def main():
-    parser = argparse.ArgumentParser()
+def evaluation(arg, recog_path, eval_dir):
+    # parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default="breeakfast")
-    parser.add_argument('--split', default='1')
-    parser.add_argument('--seed', default=1)
-    parser.add_argument('--algo_type', default="baas_baseline")
+    # parser.add_argument('--dataset', default="breakfast")
+    # parser.add_argument('--split', default='1')
+    # parser.add_argument('--seed', default=1)
+    # parser.add_argument('--algo_type', default="baas_baseline")
+    # parser.add_argument('--dir', default="default")
+    # arg = parser.parse_args()
 
-    args = parser.parse_args()
-
-    if args.dataset == "coin":
+    if arg.dataset == "coin":
         bg_class = ["BG"]
-    elif args.dataset == "gtea":
+    elif arg.dataset == "gtea":
         bg_class = ["BG"]
-    elif args.dataset == "50salads":
+    elif arg.dataset == "50salads":
         bg_class = ["action_start", "action_end"]
     else:
         bg_class = ["SIL"]
 
-    seed = int(args.seed)
-    ground_truth_path = "/media/data/salam/data/"+args.dataset+"/groundTruth/"
-    recog_path = "./results/"+args.dataset+"_"+args.algo_type+"_"+str(seed)+"/split_"+args.split+"/"
-    file_list = "/media/data/salam/data/"+args.dataset+"/splits/test.split"+args.split+".bundle"
+    seed = int(arg.seed)
+    ground_truth_path = "/media/data/salam/data/"+arg.dataset+"/groundTruth/"
+    # recog_path = "./results/"+arg.dir+"/"+arg.dataset+"_"+arg.algo_type+"_"+str(seed)+"/split_"+arg.split+"/"
+    file_list = "/media/data/salam/data/"+arg.dataset+"/splits/test.split"+arg.split+".bundle"
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
@@ -133,7 +133,7 @@ def main():
         gt_file = ground_truth_path + vid
         gt_content = read_file(gt_file).split('\n')[0:-1]
         
-        recog_file = recog_path + vid.split('.')[0]
+        recog_file = recog_path+"/" + vid.split('.')[0]
         recog_content = read_file(recog_file).split('\n')[1:]
         # recog_content = read_file(recog_file).split('\n')[1].split()
 
@@ -165,31 +165,31 @@ def main():
             tp[s] += tp1
             fp[s] += fp1
             fn[s] += fn1
-    
-    print("MoF\n")
-    print ("Acc: "+ str(100*float(correct)/total))
-    print ('Edit: '+ str((1.0*edit)/len(list_of_videos)))
-    for s in range(len(overlap)):
-        precision = tp[s] / float(tp[s]+fp[s])
-        recall = tp[s] / float(tp[s]+fn[s])
-    
-        f1 = 2.0 * (precision*recall) / (precision+recall)
+    with open(eval_dir+"/out.txt", 'w') as f:
+        print("MoF\n", file=f)
+        print ("Acc: "+ str(100*float(correct)/total), file=f)
+        print ('Edit: '+ str((1.0*edit)/len(list_of_videos)), file=f)
+        for s in range(len(overlap)):
+            precision = tp[s] / float(tp[s]+fp[s])
+            recall = tp[s] / float(tp[s]+fn[s])
+        
+            f1 = 2.0 * (precision*recall) / (precision+recall)
 
-        f1 = np.nan_to_num(f1)*100
-        print ('F1 '+ str(overlap[s]) +" : "+ str(f1))
-    
-    print("\nMoF-background\n")
-    print ("Acc: "+ str(100*float(correct_bg)/total_bg))
-    print ('Edit: '+ str((1.0*edit_bg)/len(list_of_videos)))
-    for s in range(len(overlap)):
-        precision = tp_bg[s] / float(tp_bg[s]+fp_bg[s])
-        recall = tp_bg[s] / float(tp_bg[s]+fn_bg[s])
-    
-        f1 = 2.0 * (precision*recall) / (precision+recall)
+            f1 = np.nan_to_num(f1)*100
+            print ('F1 '+ str(overlap[s]) +" : "+ str(f1), file=f)
+        
+        print("\nMoF-background\n", file=f)
+        print ("Acc: "+ str(100*float(correct_bg)/total_bg), file=f)
+        print ('Edit: '+ str((1.0*edit_bg)/len(list_of_videos)), file=f)
+        for s in range(len(overlap)):
+            precision = tp_bg[s] / float(tp_bg[s]+fp_bg[s])
+            recall = tp_bg[s] / float(tp_bg[s]+fn_bg[s])
+        
+            f1 = 2.0 * (precision*recall) / (precision+recall)
 
-        f1 = np.nan_to_num(f1)*100
-        print ('F1 '+ str(overlap[s]) +" : "+ str(f1))
+            f1 = np.nan_to_num(f1)*100
+            print ('F1 '+ str(overlap[s]) +" : "+ str(f1), file=f)
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()

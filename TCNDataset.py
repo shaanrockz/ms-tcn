@@ -17,7 +17,7 @@ class TCNDataset(Dataset):
         file_ptr.close()
         random.shuffle(self.list_of_examples)
         if debugging:
-            self.list_of_examples = self.list_of_examples[:16]
+            self.list_of_examples = self.list_of_examples[:128]
         self.args= args
 
     def __len__(self):

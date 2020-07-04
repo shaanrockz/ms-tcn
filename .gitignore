@@ -1,7 +1,9 @@
 models/
 results/
+eval/
 .vscode/
 __pycache__/
 q.log/
 *.q
 *.npy
+_Other/
