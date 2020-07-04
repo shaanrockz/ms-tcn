@@ -29,19 +29,20 @@ class SingleStageModel(nn.Module):
         self.conv_1x1 = nn.Conv1d(dim, num_f_maps, 1)
         self.layers = nn.ModuleList([copy.deepcopy(DilatedResidualLayer(
             2 ** i, num_f_maps, num_f_maps)) for i in range(num_layers)])
-        self.conv_out = nn.Conv1d(num_f_maps, num_classes-1, 1)
-        self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
+        self.conv_out = nn.Conv1d(num_f_maps, num_classes, 1)
+
+        self.conv_lambda = nn.Conv1d(num_f_maps, 1, 1)
+
 
     def forward(self, x, mask):
         out = self.conv_1x1(x)
         for layer in self.layers:
             out = layer(out, mask)
-        # print(out.size())
         out1 = self.conv_out(out) * mask[:, 0:1, :]
-        out2 = self.conv_bg(out) * mask[:, 0:1, :]
-        # print(out2.size())
-        # out3 = torch.mm
-        return {"out_bg": out2,
+
+        lambda_ = self.conv_lambda(out) * mask[:, 0:1, :]
+
+        return {"lambda_": lambda_,
                 "out_class": out1}
 
 
@@ -65,23 +66,27 @@ class Trainer:
         # self.model = MultiStageModel(
         #     num_blocks, num_layers, num_f_maps, dim, num_classes)
         self.model = SingleStageModel(num_layers, num_f_maps, dim, num_classes)
-        self.ce_class = nn.CrossEntropyLoss(ignore_index=-1)
+        weights = torch.ones(num_classes)
+        weights[1:] *= 10
+        self.ce_class = nn.CrossEntropyLoss(ignore_index=-1, weight=weights.cuda())
         self.ce_bg = nn.BCEWithLogitsLoss()
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.type = "baas_baseline"
+        self.type = "baas_current"
         self.debugging = debugging
 
     def train(self, save_dir, data_train, num_epochs, learning_rate, device):
         self.model.train()
         self.model.to(device)
-        optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         for epoch in range(num_epochs):
             print("Current Epoch : " + str(epoch))
             epoch_loss = 0
             correct = 0
+            correct_bg = 0
             total = 0
+            total_bg = 0
             count = 0
 
             for idx, sample_batch in enumerate(data_train):
@@ -91,42 +96,68 @@ class Trainer:
 
                 count += 1
                 batch_input = batch_input.to(device) 
+                bt = batch_target.clone().to(device)
                 batch_target, mask = batch_target.to(device), mask.to(device)
                 optimizer.zero_grad()
 
                 predictions = self.model(batch_input, mask)
-                pred_fg = predictions["out_class"]
-                pred_bg = predictions["out_bg"]
+                pred_class = predictions["out_class"]
+                # prediction = pred_class.data
+                lambda_ = predictions["lambda_"]
 
+                pred_class[:, 1:, :].mul_(torch.sigmoid(lambda_))
+                pred_class[:, :1, :].mul_(1-torch.sigmoid(lambda_))
+                # pred_class[:, 1:, :].mul_(lambda_)
+                # pred_class[:, :1, :].mul_(-lambda_)
+
+                # pred_class.mul_(lambda_)
                 loss = 0
 
-                loss_bg = self.ce_bg(pred_bg.transpose(2, 1).contiguous().view(-1, 1), (batch_target.view(-1, 1)==0).float())
+                loss_lambda = 0.15*self.ce_bg(lambda_.transpose(2, 1).contiguous().view(-1, 1), (batch_target.view(-1, 1)>0).float())
 
-                loss_fg = self.ce_class(pred_fg.transpose(2, 1).contiguous().view(-1, self.num_classes-1), batch_target.view(-1)-1)
+                loss_class = self.ce_class(pred_class.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
 
-                p_cat = torch.cat((pred_bg, pred_fg), 1)
-                loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(p_cat[:, :, 1:], dim=1), F.log_softmax(
-                    p_cat.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
+                loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(pred_class[:, :, 1:], dim=1), F.log_softmax(
+                    pred_class.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
                 
-                loss = loss + loss_bg + loss_fg
+                ##loss += 0.15*torch.mean(torch.clamp(self.mse(torch.sigmoid(lambda_[:, :, 1:]), torch.sigmoid(
+                ##    lambda_.detach()[:, :, :-1])), min=0, max=16)*mask[:, :, 1:])
+                
+
+                loss_chaos = 0
+                loss_chaos = torch.mean(F.softmax(pred_class[:,1:,:], dim=1)*F.log_softmax(pred_class[:,1:,:], dim=1).mul((bt.unsqueeze(1)==0).float()))
+                #print(loss_chaos)
+
+                loss = loss + loss_class + loss_lambda + loss_chaos
 
                 epoch_loss += loss.item()
                 loss.backward()
                 optimizer.step()
                 
-                if self.debugging:
-                    predictions = p_cat.data
-                    for i_batch in range(predictions.size()[0]):
-                        for i_frame in range(predictions.size()[2]):
-                            if predictions[i_batch, 0, i_frame] >= 0.5:
-                                predictions[i_batch, 1:, i_frame] = 0
-                            else:
-                                predictions[i_batch, 0, i_frame] = 0
+                # if self.debugging or epoch%5==0:
+                if epoch%5 == 0:
+                    prediction = pred_class.data
+                    # for i_batch in range(prediction.size()[0]):
+                    #     for i_frame in range(prediction.size()[2]):
+                    #         if lambda_[i_batch, 0, i_frame] < 0.5:
+                    #         # if prediction[i_batch, 0, i_frame] >= 0.5:
+                    #             prediction[i_batch, 1:, i_frame] = 0
+                    #         else:
+                    #             prediction[i_batch, 0, i_frame] = 0
 
-                    _, predicted = torch.max(predictions, 1)
-                    correct += ((predicted == batch_target).float() *
-                                mask[:, 0, :].squeeze(1)).sum().item()
-                    total += torch.sum(mask[:, 0, :]).item()
+                    # _, predicted = torch.max(prediction, 1)
+                    # correct += ((predicted == batch_target).float() *
+                    #             mask[:, 0, :].squeeze(1)).sum().item()
+                    # total += torch.sum(mask[:, 0, :]).item()
+
+                    _, predicted = torch.max(prediction.data, 1)
+                    correct += ((predicted == batch_target).float() * (batch_target>0).float()
+                                ).sum().item()
+                    correct_bg += ((predicted == batch_target).float() * (batch_target==0).float()
+                                ).sum().item()
+                    total += torch.sum((batch_target>0).float()).item()
+                    total_bg += (torch.sum((batch_target==0).float())).item()
+
 
             if not self.debugging:
                 torch.save(self.model.state_dict(), save_dir +
@@ -134,8 +165,12 @@ class Trainer:
                 torch.save(optimizer.state_dict(), save_dir +
                         "/epoch-" + str(epoch + 1) + ".opt")
             print("[epoch %d]: epoch loss = %f" % (epoch + 1, epoch_loss / (count)))
-            if self.debugging:
-                print("[epoch %d]: acc = %f" % (epoch, float(correct)/total))
+            # if self.debugging or epoch%5==0:
+            if epoch%5 == 0:
+                # print((torch.sigmoid(lambda_[0,0,100:125])>0.5).int())
+                print(lambda_[0,0,125:150])
+                print(batch_target.view(-1)[125:150])
+                print("[epoch %d]: acc_fg = %f, acc_bg = %f" % (epoch, float(correct)/total, float(correct_bg)/total_bg))
 
     def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate, thres=0.5):
         self.model.eval()
@@ -158,17 +193,20 @@ class Trainer:
                 predictions = self.model(
                     input_x, torch.ones(input_x.size(), device=device))
 
-                sig = torch.nn.Sigmoid()
-                pred_fg = sig(predictions["out_class"])
-                pred_bg = sig(predictions["out_bg"])
+                
+                pred_class = predictions["out_class"]
+                lambda_ = predictions["lambda_"]
 
-                predictions = torch.cat((pred_bg, pred_fg), 1).data
-                for i_batch in range(predictions.size()[0]):
-                    for i_frame in range(predictions.size()[2]):
-                        if predictions[i_batch, 0, i_frame] >= thres:
-                            predictions[i_batch, 1:, i_frame] = 0
-                        else:
-                            predictions[i_batch, 0, i_frame] = 0
+                pred_class[:, 1:, :].mul_(torch.sigmoid(lambda_))
+                pred_class[:, :1, :].mul_(1-torch.sigmoid(lambda_))
+
+                predictions = pred_class.data
+                # for i_batch in range(predictions.size()[0]):
+                #     for i_frame in range(predictions.size()[2]):
+                #         if lambda_[i_batch, 0, i_frame] < thres:
+                #             predictions[i_batch, 1:, i_frame] = 0
+                #         else:
+                #             predictions[i_batch, 0, i_frame] = 0
 
                 _, predicted = torch.max(predictions.data, 1)
 
@@ -203,7 +241,7 @@ def collate_fn_padd(batch):
     out_dims_mask = (int(len(batch)), batch[0][2].size()[0], int(max_len))
 
     out_tensor = batch[0][0].data.new(*out_dims).fill_(0)
-    out_target = batch[0][1].data.new(*out_dims_target).fill_(0)
+    out_target = batch[0][1].data.new(*out_dims_target).fill_(-1)
     out_mask = batch[0][2].data.new(*out_dims_mask).fill_(0)
 
     for i, tensor in enumerate(batch):

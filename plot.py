@@ -13,7 +13,9 @@ def read_file(path):
 def main():
     dataset_source = "cross_task"
     # pred_dataset = "cross_task_baas"
-    pred_dataset = "cross_task_baas_1"
+    #pred_dataset = "cross_task_baas_1"
+    #pred_path = "./results/"+pred_dataset+"/split_"+split+"/"
+    pred_path = "/media/remote_home/salam/Documents/Workspace_action_segmentation/ms-tcn/results/Chaos_entropy_thres/cross_task_baas_chaos_1/split_1/thres_4/"
     split = "1"
 
     color_names = [name for name in mcd.CSS4_COLORS]
@@ -23,7 +25,6 @@ def main():
     color_names.insert(0, 'black')
 
     gt_path = "/media/data/salam/data/"+dataset_source+"/groundTruth/"
-    pred_path = "./results/"+pred_dataset+"/split_"+split+"/"
     file_list = "/media/data/salam/data/"+dataset_source+"/splits/test.split"+split+".bundle"
 
     mapping_path = "/media/data/salam/data/"+dataset_source+"/mapping.txt"
