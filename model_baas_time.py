@@ -70,7 +70,7 @@ class Trainer:
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.type = "baas_baseline"
+        self.type = "baas_time"
         self.debugging = debugging
         self.seed = seed
 

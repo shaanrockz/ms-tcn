@@ -65,6 +65,8 @@ if args.algo_type == "baas_baseline":
     from model_baas_baseline import Trainer
 elif args.algo_type == "baas_chaos":
     from model_baas_chaos import Trainer
+elif args.algo_type == "baas_time":
+    from model_baas_time import Trainer
 elif args.algo_type == "baas_current":
     from model_baas_current import Trainer
 elif args.algo_type == "multi_task":
