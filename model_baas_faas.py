@@ -5,7 +5,7 @@ from torch import optim
 import copy
 import numpy as np
 import random
-import torch.distributions as dist
+from ops import collate_fn_padd, logit_prediction 
 
 class MultiStageModel(nn.Module):
     def __init__(self, num_stages, num_layers, num_f_maps, dim, num_classes):
@@ -32,7 +32,7 @@ class SingleStageModel(nn.Module):
             2 ** i, num_f_maps, num_f_maps)) for i in range(num_layers)])
         self.conv_out = nn.Conv1d(num_f_maps, num_classes-1, 1)
         self.conv_bg = nn.Conv1d(num_f_maps, 1, 1)
-        self.num_classes = num_classes
+        self.conv_time = nn.Conv1d(num_f_maps, 1, 1)
 
     def forward(self, x, mask):
         out = self.conv_1x1(x)
@@ -40,11 +40,10 @@ class SingleStageModel(nn.Module):
             out = layer(out, mask)
         out1 = self.conv_out(out) * mask[:, 0:1, :]
         out2 = self.conv_bg(out) * mask[:, 0:1, :]
-
-        # noise = torch.rand(out1.shape).cuda()
-        # out1 += noise.mul_(out2.repeat(1, self.num_classes-1, 1))
+        out3 = self.conv_time(out) * mask[:, 0:1, :]
         return {"out_bg": out2,
-                "out_class": out1}
+                "out_class": out1,
+                "out_time": out3}
 
 
 class DilatedResidualLayer(nn.Module):
@@ -72,7 +71,7 @@ class Trainer:
         self.mse = nn.MSELoss(reduction='none')
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.type = "baas_chaos"
+        self.type = "baas_time"
         self.debugging = debugging
         self.seed = seed
 
@@ -89,25 +88,29 @@ class Trainer:
             total_bg = 0
             count = 0
 
-
-            total_fg_entropy = 0
-            total_bg_entropy = 0
             # rand(self.seed)
             for idx, sample_batch in enumerate(data_train):
                 batch_input = sample_batch['input']
                 batch_target = sample_batch["target"]
                 batch_target_fg = sample_batch["target_fg"]
                 mask = sample_batch["mask"]
+                batch_target_rel_time = sample_batch["target_time"]
+                batch_target_rel_time_gauss = sample_batch["target_time_gauss"]
 
                 count += 1
                 batch_input = batch_input.to(device) 
                 batch_target_fg = batch_target_fg.to(device)
+                batch_target_rel_time = batch_target_rel_time.to(device)
+                batch_target_rel_time_gauss = batch_target_rel_time_gauss.to(device)
                 batch_target, mask = batch_target.to(device), mask.to(device)
                 optimizer.zero_grad()
 
                 predictions = self.model(batch_input, mask)
                 pred_fg = predictions["out_class"]
                 pred_bg = predictions["out_bg"]
+                pred_time = predictions["out_time"]
+                #print(pred_fg.shape)
+                #print(pred_time.shape)
 
                 loss = 0
 
@@ -124,30 +127,29 @@ class Trainer:
                 loss += 0.15*torch.mean(torch.clamp(self.mse(F.log_softmax(p_cat[:, :, 1:], dim=1), F.log_softmax(
                     p_cat.detach()[:, :, :-1], dim=1)), min=0, max=16)*mask[:, :, 1:])
 
-                entropy = dist.Categorical(logits=torch.transpose(pred_fg, 1, 2)).entropy()
-                entropy_bg = entropy*(batch_target==0).float()
-                total_bg_entropy += torch.sum(entropy_bg)/(torch.sum((entropy_bg>0).float()) + 0.000001)
+                square_err_time = (torch.sigmoid(pred_time.squeeze())-batch_target_rel_time)**2
+                err_time = torch.abs(torch.sigmoid(pred_time.squeeze())-batch_target_rel_time)
+                gauss_amp_err = batch_target_rel_time_gauss*square_err_time
+
+                masked_err = square_err_time*(batch_target!=0).float()
+                thres = 0.1 
+                loss_time = torch.max(torch.tensor(0.).cuda(), 100*((torch.sum(masked_err)/torch.sum(mask[:,0,:])) - thres)) - 100*torch.std(masked_err)
+                # print(loss_time)
+                # x= batch_target_rel_time.shape[0]*batch_target_rel_time.shape[1]
+                # print(torch.max(batch_target_rel_time))
                 
-                entropy_fg = entropy*(batch_target>0).float()
-                total_fg_entropy += torch.sum(entropy_fg)/(torch.sum((entropy_fg>0).float()) + 0.000001)
+                # print(torch.sum(masked_err)/torch.sum(mask[:,0,:]))
 
-                loss_chaos = 0
-                loss_chaos = torch.sum(entropy_bg)/(torch.sum((entropy_bg>0).float()) + 0.000001)
-
-                # alpha = 0.9**(epoch-1)
-                alpha = 0.15
-
-                loss = loss + loss_bg + loss_fg - alpha*torch.min(loss_chaos, torch.tensor([3.]).cuda())
-                # loss = loss + loss_bg + loss_fg
-
-                # print(alpha)
-                # print(loss_chaos.item())
+                loss = loss + loss_bg + loss_fg + loss_time
 
                 epoch_loss += loss.item()
                 loss.backward()
                 optimizer.step()
                 
                 if self.debugging:
+                    if (epoch+1)%10 == 0:
+                        print(torch.sigmoid(pred_time[0,0,100:150]))
+                        print(batch_target_rel_time[0,100:150]*(batch_target[0,100:150]>0).float())
                     predictions = torch.sigmoid(p_cat.data)
                     predictions = logit_prediction(predictions, 0.5)
 
@@ -165,11 +167,10 @@ class Trainer:
                 torch.save(optimizer.state_dict(), save_dir +
                         "/epoch-" + str(epoch + 1) + ".opt")
             print("[epoch %d]: epoch loss = %f" % (epoch, epoch_loss / (count)))
-            print("[epoch %d]: BG entropy (avg) = %f, FG entropy (avg) = %f" % (epoch, total_bg_entropy / (count), total_fg_entropy / (count)))
             if self.debugging:
                 print("[epoch %d]: acc_fg = %f, acc_bg = %f" % (epoch, float(correct)/total, float(correct_bg)/total_bg))
 
-    def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate, thres_logit=0.5, thres_entropy=2):
+    def predict(self, args, model_dir, results_dir, features_path, vid_list_file, epoch, actions_dict, device, sample_rate, thres_logit=0.6, thres_entropy=2, only_logit_prediction=False, only_entropy_prediction=True):
         self.model.eval()
         with torch.no_grad():
             self.model.to(device)
@@ -190,22 +191,11 @@ class Trainer:
                 predictions = self.model(
                     input_x, torch.ones(input_x.size(), device=device))
 
-                pred_fg_logit = predictions["out_class"]
                 pred_fg = torch.sigmoid(predictions["out_class"])
                 pred_bg = torch.sigmoid(predictions["out_bg"])
 
                 predictions = torch.cat((pred_bg, pred_fg), 1).data
-                
-                only_logit_prediction = False
-                is_logit_entropy_prediction = True
-                if only_logit_prediction:
-                    predictions = logit_prediction(predictions, thres_logit)
-                else:
-                    # thres_entropy = 0.5*np.log2(self.num_classes-1)
-                    if not is_logit_entropy_prediction:
-                        predictions = chaos_prediction(pred_fg_logit, predictions, thres_entropy)
-                    else:
-                        predictions = chaos_logit_prediction(pred_fg_logit, predictions, thres_entropy, thres_logit)
+                predictions = logit_prediction(predictions, thres_logit)
 
                 _, predicted = torch.max(predictions.data, 1)
 
@@ -220,80 +210,9 @@ class Trainer:
                 f_ptr.write(''.join(recognition))
                 f_ptr.close()
 
-def logit_prediction(predictions, thres_logit):
-    for i_batch in range(predictions.size()[0]):
-        for i_frame in range(predictions.size()[2]):
-            if predictions[i_batch, 0, i_frame] >= torch.sigmoid(torch.tensor(thres_logit).float()):
-                predictions[i_batch, 1:, i_frame] = 0
-            else:
-                predictions[i_batch, 0, i_frame] = 0
-    return predictions
-
-def chaos_prediction(pred_fg, predictions, thres_entropy):
-    for i_batch in range(pred_fg.size()[0]):
-        for i_frame in range(pred_fg.size()[2]):
-            entropy = dist.Categorical(logits=pred_fg[i_batch, :, i_frame]).entropy()
-            if entropy > torch.tensor(thres_entropy).float():
-                predictions[i_batch, 1:, i_frame] = 0
-            else:
-                predictions[i_batch, 0, i_frame] = 0
-    return predictions
-
-def chaos_logit_prediction(pred_fg, predictions, thres_entropy, thres_logit):
-    for i_batch in range(pred_fg.size()[0]):
-        for i_frame in range(pred_fg.size()[2]):
-            entropy = dist.Categorical(logits=pred_fg[i_batch, :, i_frame]).entropy()
-            if entropy > torch.tensor(thres_entropy).float() and predictions[i_batch, 0, i_frame] >= torch.sigmoid(torch.tensor(thres_logit).float()):
-                predictions[i_batch, 1:, i_frame] = 0
-            else:
-                predictions[i_batch, 0, i_frame] = 0
-    return predictions
 
 from torch.utils.data import DataLoader, TensorDataset
 from TCNDataset import TCNDataset
-
-def collate_fn_padd(batch):
-    '''
-    Padds batch of variable length
-    '''
-
-    max_size = batch[0][0].size()
-    trailing_dims = max_size[:1]
-    max_len = max([s[0].size(1) for s in batch])
-    out_dims = (int(len(batch)), int(trailing_dims[0]), int(max_len))
-
-    out_dims_target = (int(len(batch)), int(max_len))
-
-    out_dims_mask = (int(len(batch)), batch[0][2].size()[0], int(max_len))
-
-    out_tensor = batch[0][0].data.new(*out_dims).fill_(0)
-    out_target = batch[0][1].data.new(*out_dims_target).fill_(-1)
-    out_mask = batch[0][2].data.new(*out_dims_mask).fill_(0)
-
-    for i, tensor in enumerate(batch):
-        out_tensor[i, :, :tensor[0].size(1)] = tensor[0]
-        out_target[i, :tensor[1].size(0)] = tensor[1]
-        out_mask[i, :, :tensor[2].size(1)] = tensor[2]
-
-    out_target_fg = out_target.clone()
-    out_target_fg = out_target_fg-1
-    out_target_fg[out_target_fg < 0] = -1
-
-    return {
-        "input": out_tensor,
-        "target": out_target.type(torch.LongTensor),
-        "mask": out_mask,
-        "target_fg": out_target_fg.type(torch.LongTensor)
-    }
-
-# def rand(seed):
-#     random.seed(seed)
-#     np.random.seed(seed)
-#     torch.manual_seed(seed)
-#     torch.cuda.manual_seed_all(seed)
-#     torch.cuda.manual_seed(seed)
-#     torch.backends.cudnn.deterministic = True
-#     torch.backends.cudnn.benchmark = False
 
 def main():
     seed = 786

@@ -1,9 +1,13 @@
+import seaborn as sns
 import numpy as np
-import matplotlib.pylab as plt
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 dataset = "cross_task"
 trainer_type = "baas_chaos"
-thres_type = "entropy"
+thres_type = "logit"
+runs = 1
 
 filename = "result_mof_"+dataset+"_"+trainer_type+"_"+thres_type+".npy"
 x_mof = np.load(filename)
@@ -11,25 +15,34 @@ x_mof = np.load(filename)
 filename = "result_mof-bg_"+dataset+"_"+trainer_type+"_"+thres_type+".npy"
 x_mof_bg = np.load(filename)
 
-plt.subplot(1,2,1)
-plt.boxplot(x_mof)
-plt.xticks(np.arange(1,13), ['0.0','0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.5'])
-plt.xlabel("Entropy Threshold")
-# plt.xticks(np.arange(1,10), ['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'])
-# plt.xlabel("Logit Threshold")
-plt.ylabel("Accuracy %")
-plt.title(trainer_type+" Result MoF")
-plt.grid(b=True, which='major')
 
-plt.subplot(1,2,2)
-plt.boxplot(x_mof_bg)
-plt.xticks(np.arange(1,13), ['0.0','0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.5'])
-plt.xlabel("Entropy Threshold")
-# plt.xticks(np.arange(1,10), ['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'])
-# plt.xlabel("Logit Threshold")
-plt.ylabel("Accuracy %")
-plt.title(trainer_type+" Result MoF-Background")
-plt.grid(b=True, which='major')
+x_mof_bg = pd.DataFrame(x_mof_bg.T, index=range(np.shape(x_mof_bg)[1]))
+x_mof_bg_mean = x_mof_bg.T.mean()
+if runs>1:
+    x_mof_bg_std = x_mof_bg.T.std()
 
+x_mof = pd.DataFrame(x_mof.T, index=range(np.shape(x_mof)[1]))
+x_mof_mean = x_mof.T.mean()
+if runs>1:
+    x_mof_std = x_mof.T.std()
+
+ax = x_mof_bg_mean.plot(color="red")
+if runs>1:
+    x_mof_bg_mean.plot(yerr=x_mof_bg_std, capsize=3, color="red")
+
+x_mof_mean.plot(color="green")
+if runs>1:
+    x_mof_mean.plot(yerr=x_mof_std, capsize=3, color="green")
+
+ax.grid(b=True, which='major')
+ax.set_xticks([n for n in range(20)])
+ax.set_xticklabels([str(n*5) for n in range(20)])
+# ax.set_xlabel("Entropy threshold as % of Log(# of fg classes)")
+ax.set_xlabel("Logit threshold as % of sigmoid outcome [0,1]")
+ax.set_ylabel("Accuracy %")
+
+red_patch = mpatches.Patch(color='red', label='MoF-BG')
+green_patch = mpatches.Patch(color='green', label='MoF')
+plt.legend(handles=[red_patch, green_patch])
 
 plt.show()

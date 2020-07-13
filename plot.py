@@ -15,7 +15,7 @@ def main():
     # pred_dataset = "cross_task_baas"
     #pred_dataset = "cross_task_baas_1"
     #pred_path = "./results/"+pred_dataset+"/split_"+split+"/"
-    pred_path = "/media/remote_home/salam/Documents/Workspace_action_segmentation/ms-tcn/results/Chaos_entropy_thres/cross_task_baas_chaos_1/split_1/thres_4/"
+    pred_path = "/media/remote_home/salam/Documents/Workspace_action_segmentation/ms-tcn/results/Time/cross_task_baas_time_3/split_1/"
     split = "1"
 
     color_names = [name for name in mcd.CSS4_COLORS]

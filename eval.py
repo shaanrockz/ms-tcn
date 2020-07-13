@@ -91,28 +91,18 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
 
 
 def evaluation(arg, recog_path, eval_dir):
-    # parser = argparse.ArgumentParser()
 
-    # parser.add_argument('--dataset', default="breakfast")
-    # parser.add_argument('--split', default='1')
-    # parser.add_argument('--seed', default=1)
-    # parser.add_argument('--algo_type', default="baas_baseline")
-    # parser.add_argument('--dir', default="default")
-    # arg = parser.parse_args()
-
-    if arg.dataset == "coin":
+    if arg.dataset.dataset == "coin":
         bg_class = ["BG"]
-    elif arg.dataset == "gtea":
+    elif arg.dataset.dataset == "gtea":
         bg_class = ["BG"]
-    elif arg.dataset == "50salads":
+    elif arg.dataset.dataset == "50salads":
         bg_class = ["action_start", "action_end"]
     else:
         bg_class = ["SIL"]
 
-    seed = int(arg.seed)
-    ground_truth_path = "/media/data/salam/data/"+arg.dataset+"/groundTruth/"
-    # recog_path = "./results/"+arg.dir+"/"+arg.dataset+"_"+arg.algo_type+"_"+str(seed)+"/split_"+arg.split+"/"
-    file_list = "/media/data/salam/data/"+arg.dataset+"/splits/test.split"+arg.split+".bundle"
+    ground_truth_path = "/media/data/salam/data/"+arg.dataset.dataset+"/groundTruth/"
+    file_list = "/media/data/salam/data/"+arg.dataset.dataset+"/splits/test.split"+arg.dataset.split+".bundle"
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
@@ -135,7 +125,6 @@ def evaluation(arg, recog_path, eval_dir):
         
         recog_file = recog_path+"/" + vid.split('.')[0]
         recog_content = read_file(recog_file).split('\n')[1:]
-        # recog_content = read_file(recog_file).split('\n')[1].split()
 
         for i in range(len(gt_content)):
             if gt_content[i] not in bg_class:

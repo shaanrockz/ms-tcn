@@ -96,8 +96,8 @@ def main():
     parser.add_argument('--dataset', default="cross_task")
     parser.add_argument('--split', default='1')
     parser.add_argument('--algo_type', default="baas_chaos")
-    parser.add_argument('--resdir', default="Chaos_entropy_thres")
-
+    parser.add_argument('--resdir', default="Chaos_logit_thres")
+    thres_type = "logit"
     bg_class = ["SIL"]
 
     args = parser.parse_args()
@@ -108,14 +108,12 @@ def main():
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
-    # arr = np.zeros((5,9))
-    # arr_bg = np.zeros((5,9))
-
-    arr = np.zeros((5,12))
-    arr_bg = np.zeros((5,12))
-    for k in range(5):
-        # for j in range(1,10):
-        for j in range(1,13):   
+    num_thres = 20
+    runs = 5
+    arr = np.zeros((runs, num_thres))
+    arr_bg = np.zeros((runs, num_thres))
+    for k in range(runs):
+        for j in range(1,num_thres+1):   
             #recog_path = "./results/"+args.dataset+"_baas_"+str(k+1)+"/thres_"+str(j/10)+"/"
             recog_path = "./results/"+args.resdir+"/"+args.dataset+"_"+args.algo_type+"_"+str(k+1)+"/split_"+args.split+"/thres_"+str(j)+"/"
             correct = 0
@@ -142,8 +140,8 @@ def main():
             arr_bg[k,j-1] = 100*float(correct_bg)/total_bg
 
             #print ("Acc: "+ str(100*float(correct)/total))
-    np.save('result_mof_'+args.dataset+"_"+args.algo_type, arr)
-    np.save('result_mof-bg_'+args.dataset+"_"+args.algo_type, arr_bg)
+    np.save('result_mof_'+args.dataset+"_"+args.algo_type+"_"+thres_type, arr)
+    np.save('result_mof-bg_'+args.dataset+"_"+args.algo_type+"_"+thres_type, arr_bg)
 
 
 if __name__ == '__main__':

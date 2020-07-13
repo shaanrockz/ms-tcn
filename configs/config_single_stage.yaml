@@ -1,0 +1,21 @@
+algo:                       single_stage
+
+dataset:
+  dataset:                  cross_task
+  split:                    '1'
+
+training:
+  enable:                   True
+  epoch:                    50
+
+additional_loss:
+  enable:                   False
+
+evaluation:
+  enable:                   True
+  predict:                  True
+  eval:                     True
+
+metrics:
+  MoF:                      True
+  MoF_BG:                   True

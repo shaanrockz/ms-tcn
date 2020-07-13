@@ -1,0 +1,29 @@
+algo:                       separate_background
+
+dataset:
+  dataset:                  cross_task
+  split:                    '1'
+
+training:
+  enable:                   True
+  epoch:                    50
+
+additional_loss:
+  enable:                   True
+  background_entropy:       True
+  position_awareness:       True
+
+evaluation:
+  enable:                   True
+  predict:                  True
+  eval:                     True
+  threshold_analysis:       True
+
+evaluation_option:
+  background_probability:   False
+  entropy:                  True
+
+metrics:
+  MoF:                      True
+  MoF_BG:                   True
+  AUC:                      True
