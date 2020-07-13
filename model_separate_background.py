@@ -204,13 +204,9 @@ class Trainer:
 
                 if only_logit_prediction:
                     predictions = logit_prediction(predictions, thres_logit)
-                else:
-                    if only_entropy_prediction:
-                        predictions = chaos_prediction(
-                            pred_fg_logit, predictions, thres_entropy)
-                    # else:
-                    #     predictions = chaos_logit_prediction(
-                    #         pred_fg_logit, predictions, thres_entropy, thres_logit)
+                elif only_entropy_prediction:
+                    predictions = chaos_prediction(
+                        pred_fg_logit, predictions, thres_entropy)
 
                 _, predicted = torch.max(predictions.data, 1)
 

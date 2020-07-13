@@ -3,7 +3,7 @@
 
 import numpy as np
 import argparse
-
+from sklearn.metrics import auc
 
 def read_file(path):
     with open(path, 'r') as f:
@@ -90,32 +90,31 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
     return float(tp), float(fp), float(fn)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('--dataset', default="cross_task")
-    parser.add_argument('--split', default='1')
-    parser.add_argument('--algo_type', default="baas_chaos")
-    parser.add_argument('--resdir', default="Chaos_logit_thres")
+def threshold_eval(dataset, split, algo_type, resdir, thres_type, num_thres, seed):
     thres_type = "logit"
-    bg_class = ["SIL"]
 
-    args = parser.parse_args()
+    if dataset == "coin":
+        bg_class = ["BG"]
+    elif dataset == "gtea":
+        bg_class = ["BG"]
+    elif dataset == "50salads":
+        bg_class = ["action_start", "action_end"]
+    else:
+        bg_class = ["SIL"]
 
-    ground_truth_path = "/media/data/salam/data/"+args.dataset+"/groundTruth/"
+    ground_truth_path = "/media/data/salam/data/"+dataset+"/groundTruth/"
     
-    file_list = "/media/data/salam/data/"+args.dataset+"/splits/test.split"+args.split+".bundle"
+    file_list = "/media/data/salam/data/"+dataset+"/splits/test.split"+split+".bundle"
 
     list_of_videos = read_file(file_list).split('\n')[:-1]
 
-    num_thres = 20
-    runs = 5
+    # num_thres = 20
+    runs = 1
     arr = np.zeros((runs, num_thres))
     arr_bg = np.zeros((runs, num_thres))
     for k in range(runs):
-        for j in range(1,num_thres+1):   
-            #recog_path = "./results/"+args.dataset+"_baas_"+str(k+1)+"/thres_"+str(j/10)+"/"
-            recog_path = "./results/"+args.resdir+"/"+args.dataset+"_"+args.algo_type+"_"+str(k+1)+"/split_"+args.split+"/thres_"+str(j)+"/"
+        for j in range(1,num_thres+1):
+            recog_path = "./results/"+resdir+"/"+dataset+"_"+algo_type+"_"+str(k+1)+"/split_"+split+"/thres_"+str(j)+"/"
             correct = 0
             total = 0
             correct_bg = 0
@@ -140,9 +139,7 @@ def main():
             arr_bg[k,j-1] = 100*float(correct_bg)/total_bg
 
             #print ("Acc: "+ str(100*float(correct)/total))
-    np.save('result_mof_'+args.dataset+"_"+args.algo_type+"_"+thres_type, arr)
-    np.save('result_mof-bg_'+args.dataset+"_"+args.algo_type+"_"+thres_type, arr_bg)
-
-
-if __name__ == '__main__':
-    main()
+    auc_ = auc(arr,arr_bg)
+    np.save('result_auc_'+dataset+"_"+algo_type+"_"+thres_type+"_"+seed, auc_)
+    np.save('result_mof_'+dataset+"_"+algo_type+"_"+thres_type+"_"+seed, arr)
+    np.save('result_mof-bg_'+dataset+"_"+algo_type+"_"+thres_type+"_"+seed, arr_bg)

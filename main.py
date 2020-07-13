@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from eval import evaluation
 from ops import collate_fn_padd
 from config import config
+from threshold_evaluation import threshold_eval
 
 # Parser options
 parser = OptionParser()
@@ -142,6 +143,13 @@ def main(argv):
                                 only_logit_prediction=cfg.evaluation_option.background_probability)
                 thres_entropy += 0.05*np.log2(num_classes-1)
                 thres_logit += 0.05
+            
+            if cfg.evaluation_option.entropy:
+                thres_type = "entropy"
+            elif cfg.evaluation_option.background_probability:
+                thres_type = "logit"
+            
+            threshold_eval(cfg.dataset.dataset, cfg.dataset.split, cfg.algo, cfg.algo, thres_type=thres_type, num_thres=20, seed=str(seed))
 
 
 if __name__ == "__main__":
